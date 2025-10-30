@@ -30,8 +30,11 @@ Servo rightServo;
 void setup() {
   leftServo.attach(LEFT_SERVO_PIN);
   rightServo.attach(RIGHT_SERVO_PIN);
+
+  initSerial();
 }
 
+// -------------------------------------- Modes --------------------------------------
 #if defined(CENTER_SERVOS)
 void loop() {
   leftServo.write(90.0);
@@ -108,6 +111,7 @@ void loop() {
   }
 }
 
+// -------------------------------------- Maths, Kinematics, and Control --------------------------------------
 // Move servos along a straight line from (x0, y0) to (x1, y1)
 void drawLine(double x0, double y0, double x1, double y1) {
   setServosByPosition(x0, y0);
@@ -124,9 +128,13 @@ void drawLine(double x0, double y0, double x1, double y1) {
   delay(500);
 }
 #else
+bool hasInit  = false;
 void loop() {
-  setServosByHeading(-45.0, 45.0);
-  delay(1000);
+  if (!hasInit) {
+    resetPosition();
+    hasInit = true;
+  }
+  readAndExecuteInstruction();
 }
 #endif
 
@@ -151,7 +159,6 @@ void setServosByHeading(double left, double right) {
 // Positive X - right
 // Zero - Center between the two joints
 void setServosByPosition(double x, double y) {
-  // Base positions
   double lx = -SPREAD / 2.0;
   double ly = 0.0;
   double rx =  SPREAD / 2.0;
@@ -202,4 +209,85 @@ double normalizeHeading(double heading) {
   if (heading < 0.0) heading += 360.0;
   if (heading > 180.0) heading -= 360.0;
   return heading;
+}
+
+// -------------------------------------- Instruction Processing and Telemetry --------------------------------------
+void log(String msg) {
+  Serial.print("L ");
+  Serial.print(msg);
+  Serial.print(";");
+}
+
+void complete() {
+  Serial.print("C;");
+}
+
+void initSerial() {
+  Serial.begin(115200);
+  log("Robot ready");
+}
+
+void resetPosition() {
+  setServosByPosition(0, DRIVEN_LEG_LENGTH);
+}
+
+float currentSpeed = 0;
+float currentX = 0;
+float currentY = DRIVEN_LEG_LENGTH;
+char nextInstructionChar = 'x';
+char discardChar = 'x';
+
+// Blocking read the serial.
+// Warning: Using this method, it is very important to STREAM a few instructions at a time to the arduino! If you don't, data will be lost.
+void readAndExecuteInstruction() {
+  nextInstructionChar = readCharBlocking();
+  if (nextInstructionChar == 'W') {
+    readAndExecuteWaypointInstruction();
+  } else if (nextInstructionChar == 'S') {
+    readAndExecuteSpeedInstruction();
+  } else {
+    // Do nothing, lets just try with the next char
+  }
+}
+
+void readAndExecuteWaypointInstruction() {
+  float x = Serial.parseFloat();
+  float y = Serial.parseFloat();
+  float dx = x - currentX;
+  float dy = y - currentY;
+  flushToNextSemicolon();
+  if (currentSpeed == 0) {
+    return;
+  }
+  float distance = sqrtf(dx*dx + dy*dy);
+  int nSteps = int(distance/2.0); // TODO make the step resolution configurable
+  nSteps = max(2, nSteps);
+  float time = distance / currentSpeed;
+  for (int step = 0; step < nSteps; step ++) {
+    float t = float(step) / float(nSteps-1);
+    delay(time*1000.0/(float(nSteps)-1));
+    setServosByPosition(currentX + t*dx, currentY + t*dy);
+  }
+  currentX = x;
+  currentY = y;
+}
+
+void readAndExecuteSpeedInstruction() {
+  currentSpeed = Serial.parseFloat();
+  flushToNextSemicolon();
+}
+
+// When we fail to parse, simply read until the next semicolon, so we can start reading another instruction.
+void flushToNextSemicolon() {
+  discardChar = 'x';
+  while (discardChar != ';') {
+    discardChar = Serial.read();
+  }
+}
+
+char readCharBlocking() {
+  while (Serial.available() == 0) {
+    delayMicroseconds(10);
+  }
+  return Serial.read();
 }
