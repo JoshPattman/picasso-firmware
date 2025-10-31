@@ -9,9 +9,9 @@
 #define RIGHT_N_ANGLE 155.0
 #define RIGHT_E_ANGLE 90.0
 
-#define DRIVEN_LEG_LENGTH 90.0
-#define FREE_LEG_LENGTH 120.0
-#define SPREAD 40.0
+#define DRIVEN_LEG_LENGTH 9.0
+#define FREE_LEG_LENGTH 12.0
+#define SPREAD 4.0
 
 // Calibration modes - only one works at once
 //#define CENTER_SERVOS
@@ -22,7 +22,6 @@
 //#define RIGHT_E
 //#define OSCLIATE_TEST
 //#define CIRCLE_TEST
-//#define TRIANGLE_FRACTAL
 
 Servo leftServo;
 Servo rightServo;
@@ -80,9 +79,9 @@ void loop() {
 }
 #elif defined(CIRCLE_TEST)
 void loop() {
-  double radius = 35.0;
+  double radius = DRIVEN_LEG_LENGTH/3;
   double centerX = 0.0;
-  double centerY = 100.0;
+  double centerY = DRIVEN_LEG_LENGTH;
   int steps = 180;
 
   for (int i = 0; i < steps; i++) {
@@ -93,39 +92,6 @@ void loop() {
     setServosByPosition(x, y);
     delay(50);
   }
-}
-#elif defined(TRIANGLE_FRACTAL)
-void loop() {
-  float ox = -40;
-  float oy = 90;
-  bool toggle = false;
-  for (float x = 0; x < 100; x+=5) {
-    float y = 100-x;
-    if (toggle) {
-      drawLine(ox, oy+y, ox+x, oy);
-    } else {
-      drawLine(ox+x, oy, ox, oy+y);
-    }
-    toggle = !toggle;
-    delay(500);
-  }
-}
-
-// -------------------------------------- Maths, Kinematics, and Control --------------------------------------
-// Move servos along a straight line from (x0, y0) to (x1, y1)
-void drawLine(double x0, double y0, double x1, double y1) {
-  setServosByPosition(x0, y0);
-  delay(500);
-  int steps = 20;
-  for (int i = 0; i <= steps; i++) {
-    double t = (double)i / steps;
-    double x = x0 + t * (x1 - x0);
-    double y = y0 + t * (y1 - y0);
-    setServosByPosition(x, y);
-    delay(50); // adjust speed
-  }
-  setServosByPosition(x1, y1);
-  delay(500);
 }
 #else
 bool hasInit  = false;
@@ -243,9 +209,17 @@ void readAndExecuteInstruction() {
   nextInstructionChar = readCharBlocking();
   if (nextInstructionChar == 'W') {
     readAndExecuteWaypointInstruction();
+    complete();
   } else if (nextInstructionChar == 'S') {
     readAndExecuteSpeedInstruction();
-  } else {
+    complete();
+  } else if (nextInstructionChar == 'D') {
+    readAndExecuteDelayInstruction();
+    complete();
+  } else if (nextInstructionChar == 'P') {
+    flushToNextSemicolon();
+    complete();
+  }else {
     // Do nothing, lets just try with the next char
   }
 }
@@ -274,6 +248,11 @@ void readAndExecuteWaypointInstruction() {
 
 void readAndExecuteSpeedInstruction() {
   currentSpeed = Serial.parseFloat();
+  flushToNextSemicolon();
+}
+
+void readAndExecuteDelayInstruction() {
+  delay(Serial.parseInt());
   flushToNextSemicolon();
 }
 
