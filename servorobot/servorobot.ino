@@ -13,6 +13,8 @@
 #define FREE_LEG_LENGTH 12.0
 #define SPREAD 4.0
 
+#define WAYPOINT_STEP_TIME 10 // How many ms between waypoint steps
+
 // Calibration modes - only one works at once
 //#define CENTER_SERVOS
 //#define WIGGLE_LEFT
@@ -219,7 +221,11 @@ void readAndExecuteInstruction() {
   } else if (nextInstructionChar == 'P') {
     flushToNextSemicolon();
     complete();
-  }else {
+  } else if (nextInstructionChar == 'H') {
+    flushToNextSemicolon();
+    resetPosition();
+    complete();
+  } else {
     // Do nothing, lets just try with the next char
   }
 }
@@ -234,13 +240,14 @@ void readAndExecuteWaypointInstruction() {
     return;
   }
   float distance = sqrtf(dx*dx + dy*dy);
-  int nSteps = int(distance/2.0); // TODO make the step resolution configurable
-  nSteps = max(2, nSteps);
-  float time = distance / currentSpeed;
-  for (int step = 0; step < nSteps; step ++) {
-    float t = float(step) / float(nSteps-1);
-    delay(time*1000.0/(float(nSteps)-1));
+  long totalTime = long(1000.0*distance / currentSpeed);
+  long timer = 0;
+  while (timer  <=  totalTime) {
+    float t = float(timer) / float(totalTime);
+    t = min(t, 1);
     setServosByPosition(currentX + t*dx, currentY + t*dy);
+    timer += WAYPOINT_STEP_TIME;
+    delay(WAYPOINT_STEP_TIME);
   }
   currentX = x;
   currentY = y;
